@@ -1,122 +1,173 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
-
-function App() {
-  const [count, setCount] = useState(0)
-
+import React, { useState, useEffect, useRef } from "react";
+import Cabecalho from "./componentes/Cabecalho.jsx";
+import Vitrine from "./componentes/Vitrine.jsx";
+import Carrinho from "./componentes/Carrinho.jsx";
+import DetalheProduto from "./componentes/DetalheProduto.jsx";
+import Finalizacao from "./componentes/Finalizacao.jsx";
+import {
+  listarProdutos,
+  buscarProduto,
+} from "./servicos/api.js";
+import { adicionarItem, alterarQuantidade } from "./servicos/carrinho.js";
+export default function Aplicacao() {
+  const [produtos, definirProdutos] = useState([]);
+  const [carregando, definirCarregando] = useState(true);
+  const [erro, definirErro] = useState("");
+  const [itens, definirItens] = useState([]);
+  const [tela, definirTela] = useState(null);
+  const [produto, definirProduto] = useState(null);
+  const [mensagem, definirMensagem] = useState("");
+  const [recarga, definirRecarga] = useState(0);
+  const dialogo = useRef(null);
+  const ultimoFoco = useRef(null);
+  useEffect(() => {
+    const controle = new AbortController();
+    definirCarregando(true);
+    definirErro("");
+    listarProdutos(controle.signal)
+      .then(definirProdutos)
+      .catch((falha) => {
+        if (falha.name !== "AbortError") definirErro(falha.message);
+      })
+      .finally(() => {
+        if (!controle.signal.aborted) definirCarregando(false);
+      });
+    return () => controle.abort();
+  }, [recarga]);
+  useEffect(() => {
+    if (tela && !dialogo.current.open) {
+      ultimoFoco.current = document.activeElement;
+      dialogo.current.showModal();
+    } else if (!tela && dialogo.current.open) {
+      dialogo.current.close();
+      ultimoFoco.current?.focus();
+    }
+  }, [tela]);
+  function adicionar(produto) {
+    try {
+      definirItens(adicionarItem(itens, produto));
+      definirMensagem(`${produto.nome} adicionado à sacola.`);
+    } catch (falha) {
+      definirMensagem(falha.message);
+    }
+  }
+  function alterar(identificador, quantidade) {
+    try {
+      definirItens(alterarQuantidade(itens, identificador, quantidade));
+    } catch (falha) {
+      definirMensagem(falha.message);
+    }
+  }
+  async function detalhar(identificador) {
+    try {
+      definirProduto(await buscarProduto(identificador));
+      definirTela("detalhe");
+    } catch (falha) {
+      definirMensagem(falha.message);
+    }
+  }
+  function concluir() {
+    definirItens([]);
+    definirRecarga((valor) => valor + 1);
+  }
   return (
     <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+      <a className="pular" href="#conteudo">
+        Pular para o conteúdo
+      </a>
+      <Cabecalho
+        quantidade={itens.reduce((soma, item) => soma + item.quantidade, 0)}
+        aoAbrirCarrinho={() => definirTela("carrinho")}
+      />
+      <main id="conteudo">
+        <div className="modo">
+          CONSUMO DIRETO DA API PHP
+          <span>
+            Dados consultados nos endpoints PHP. Pedidos enviados à API.
+            Pagamento sempre simulado.
+          </span>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
+        <Vitrine
+          produtos={produtos}
+          carregando={carregando}
+          erro={erro}
+          aoRecarregar={() => definirRecarga((valor) => valor + 1)}
+          aoAdicionar={adicionar}
+          aoDetalhar={detalhar}
+        />
+        <section className="convite">
+          <div>
+            <p className="sobretitulo">DO PRIMEIRO COMPONENTE À COMPRA</p>
+            <h2>
+              Gostou da loja?
+              <br />
+              Agora construa a sua.
+            </h2>
+          </div>
+          <a className="botao principal" href="/material.html">
+            Abrir o passo a passo ↗
+          </a>
+        </section>
+      </main>
+      <footer>
+        <a className="marca" href="/">
+          ◉ órbita
+        </a>
+        <p>
+          Loja escola • React, PHP OOP e MySQL
+          <br />
+          Produtos e valores fictícios para fins de aprendizagem.
+        </p>
+        <a href="/apresentacao.html">Apresentação do projeto ↗</a>
+      </footer>
+      <div className="mensagem" role="status">
+        {mensagem && (
+          <>
+            <span>{mensagem}</span>
+            <button
+              onClick={() => definirMensagem("")}
+              aria-label="Dispensar mensagem"
+            >
+              ×
+            </button>
+          </>
+        )}
+      </div>
+      <dialog
+        ref={dialogo}
+        aria-labelledby="titulo-dialogo"
+        onCancel={() => definirTela(null)}
+        onClose={() => {
+          definirTela(null);
+          ultimoFoco.current?.focus();
+        }}
+      >
+        <div className="conteudo-dialogo" key={tela}>
+          {tela === "carrinho" && (
+            <Carrinho
+              itens={itens}
+              aoAlterar={alterar}
+              aoAvancar={() => definirTela("finalizacao")}
+              aoFechar={() => definirTela(null)}
+            />
+          )}{" "}
+          {tela === "detalhe" && produto && (
+            <DetalheProduto
+              produto={produto}
+              aoAdicionar={adicionar}
+              aoFechar={() => definirTela(null)}
+            />
+          )}{" "}
+          {tela === "finalizacao" && (
+            <Finalizacao
+              itens={itens}
+              aoConcluir={concluir}
+              aoVoltar={() => definirTela("carrinho")}
+              aoFechar={() => definirTela(null)}
+            />
+          )}
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
+      </dialog>
     </>
-  )
+  );
 }
-
-export default App
